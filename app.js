@@ -1,4 +1,3 @@
-// 1. Impor modul-modul yang kita butuhkan
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
