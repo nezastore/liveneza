@@ -6,21 +6,49 @@ const session = require('express-session');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const SQLiteStore = require('connect-sqlite3')(session);
-const multer = require('multer'); // BARU: Impor multer untuk unggahan file
-const fs = require('fs'); // BARU: Impor fs untuk manajemen file
+const multer = require('multer');
+const fs = require('fs');
 
 // =================================================================================
-// 2. KONEKSI DAN INISIALISASI DATABASE
+// 2. KONEKSI DAN INISIALISASI DATABASE (VERSI PERBAIKAN)
 // =================================================================================
 const db = new sqlite3.Database('./database.sqlite', (err) => {
-    if (err) return console.error("Error membuka database:", err.message);
+    if (err) {
+        return console.error("Error membuka database:", err.message);
+    } 
     
     console.log("Terhubung ke database SQLite.");
-    db.serialize(() => {
-        // Membuat tabel 'users' jika belum ada
-        db.run(`CREATE TABLE IF NOT EXISTS users (...)`, (err) => { /* ... kode user admin ... */ });
 
-        // BARU: Membuat tabel 'videos' untuk menyimpan daftar video
+    // db.serialize() memastikan perintah di dalamnya berjalan satu per satu
+    db.serialize(() => {
+        // Perintah 1: Membuat tabel 'users'
+        db.run(`CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT
+        )`, (err) => {
+            if (err) return console.error("Error membuat tabel users:", err.message);
+
+            // Perintah 2: Cek apakah user 'admin' sudah ada (hanya berjalan setelah tabel dibuat)
+            const defaultUsername = 'admin';
+            db.get("SELECT * FROM users WHERE username = ?", [defaultUsername], (err, row) => {
+                if (err) return console.error("Error query user:", err.message);
+                
+                if (!row) {
+                    // Perintah 3: Buat user admin jika belum ada
+                    const defaultPassword = 'admin';
+                    bcrypt.hash(defaultPassword, 10, (err, hash) => {
+                        if (err) return console.error("Error hashing password:", err);
+                        db.run("INSERT INTO users (username, password) VALUES (?, ?)", [defaultUsername, hash], (err) => {
+                            if (err) return console.error("Error membuat user admin:", err);
+                            console.log("User admin default ('admin'/'admin') telah dibuat.");
+                        });
+                    });
+                }
+            });
+        });
+
+        // Perintah 4: Membuat tabel 'videos' (dijalankan bersamaan dengan blok users)
         db.run(`CREATE TABLE IF NOT EXISTS videos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -31,16 +59,6 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
         });
     });
 });
-// (Salin kode pembuatan tabel user & admin dari file sebelumnya ke sini)
-// Supaya ringkas, bagian inisialisasi user admin saya sembunyikan. Pastikan Anda tetap memakainya.
-db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
-    if (!row) {
-        bcrypt.hash('admin', 10, (err, hash) => {
-            db.run("INSERT INTO users (username, password) VALUES (?, ?)", ['admin', hash]);
-            console.log("User admin default ('admin'/'admin') telah dibuat.");
-        });
-    }
-});
 
 
 // =================================================================================
@@ -49,7 +67,7 @@ db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
 const app = express();
 const PORT = 3000;
 
-// BARU: Konfigurasi Multer untuk penyimpanan video
+// Konfigurasi Multer untuk penyimpanan video
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, 'videos/'); // Simpan file di folder 'videos'
@@ -66,13 +84,11 @@ const upload = multer({ storage: storage });
 
 
 // =================================================================================
-// 4. KONFIGURASI MIDDLEWARE (SAMA SEPERTI SEBELUMNYA)
+// 4. KONFIGURASI MIDDLEWARE
 // =================================================================================
-// ... (Salin semua middleware dari app.js versi 2, tidak ada perubahan di sini)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-// BARU: Sajikan juga folder 'videos' secara statis agar bisa diakses thumbnail/preview
 app.use('/videos', express.static(path.join(__dirname, 'videos')));
 app.use(session({
     store: new SQLiteStore({ db: 'database.sqlite', dir: './' }),
@@ -95,22 +111,17 @@ const requireLogin = (req, res, next) => {
 
 // Rute Halaman Utama/Dashboard
 app.get('/', requireLogin, (req, res) => {
-    // BARU: Ambil daftar video dari database sebelum merender halaman
     db.all("SELECT * FROM videos ORDER BY created_at DESC", [], (err, videos) => {
         if (err) {
             console.error(err);
-            // Kirim array kosong jika ada error
             return res.render('dashboard', { username: req.session.username, videos: [] });
         }
         res.render('dashboard', { username: req.session.username, videos: videos });
     });
 });
 
-// BARU: Rute untuk menangani unggahan video
-// 'upload.single('videoFile')' -> 'videoFile' harus sama dengan atribut 'name' di input form
+// Rute untuk menangani unggahan video
 app.post('/upload', requireLogin, upload.single('videoFile'), (req, res) => {
-    // req.file berisi informasi file yang diunggah oleh multer
-    // req.body berisi data lain dari form (seperti judul)
     if (!req.file) {
         return res.status(400).send('Tidak ada file yang diunggah.');
     }
@@ -121,28 +132,57 @@ app.post('/upload', requireLogin, upload.single('videoFile'), (req, res) => {
     db.run("INSERT INTO videos (title, filename) VALUES (?, ?)", [title, filename], (err) => {
         if (err) {
             console.error("Error menyimpan video ke DB:", err);
-            // Jika gagal, hapus file yang sudah terunggah
             fs.unlinkSync(path.join(__dirname, 'videos', filename));
             return res.status(500).send("Gagal menyimpan informasi video.");
         }
-        res.redirect('/'); // Kembali ke dashboard, yang akan menampilkan video baru
+        res.redirect('/');
     });
 });
 
 
-// Rute Otentikasi (SAMA SEPERTI SEBELUMNYA)
-// ... (Salin rute /login GET, /login POST, dan /logout dari app.js versi 2)
+// Rute Otentikasi
 app.get('/login', (req, res) => {
     if (req.session.userId) return res.redirect('/');
     res.render('login', { error: null });
 });
 
-app.post('/login', (req, res) => { /* ... kode login ... */ });
-app.get('/logout', (req, res) => { /* ... kode logout ... */ });
+app.post('/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.render('login', { error: "Username dan password tidak boleh kosong." });
+    }
+
+    db.get("SELECT * FROM users WHERE username = ?", [username], (err, user) => {
+        if (err || !user) {
+            return res.render('login', { error: "Username atau password salah." });
+        }
+
+        bcrypt.compare(password, user.password, (err, isMatch) => {
+            if (isMatch) {
+                req.session.userId = user.id;
+                req.session.username = user.username;
+                res.redirect('/');
+            } else {
+                res.render('login', { error: "Username atau password salah." });
+            }
+        });
+    });
+});
+
+app.get('/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.redirect('/');
+        }
+        res.clearCookie('connect.sid');
+        res.redirect('/login');
+    });
+});
 
 
 // =================================================================================
-// 6. MENJALANKAN SERVER (SAMA SEPERTI SEBELUMNYA)
+// 6. MENJALANKAN SERVER
 // =================================================================================
 app.listen(PORT, () => {
     console.log(`Server siap dijalankan. Buka http://localhost:${PORT}`);
