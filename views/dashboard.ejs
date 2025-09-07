@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - StreamFlow</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        /* CSS tambahan khusus untuk halaman ini */
+        .upload-section {
+            background-color: var(--panel-bg);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+        }
+        .upload-form {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .upload-form input[type="text"], .upload-form input[type="file"] {
+             flex-grow: 1;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            border: 1px dashed var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <h1>StreamFlow <span class="subtitle">by Bang Tutorial</span></h1>
+        <div>
+            <span style="margin-right: 15px;">Halo, <%= username %></span>
+            <a href="/logout" class="logout-button">Logout</a>
+        </div>
+    </header>
+
+    <main>
+        <section class="upload-section">
+            <h3>Unggah Video Baru</h3>
+            <form action="/upload" method="POST" enctype="multipart/form-data" class="upload-form">
+                <div class="input-group" style="flex-grow: 1; margin-bottom: 0;">
+                    <label for="videoTitle">Judul Video (opsional)</label>
+                    <input type="text" id="videoTitle" name="videoTitle" placeholder="Contoh: Relaxing Lofi Music">
+                </div>
+                <div class="input-group" style="flex-grow: 1; margin-bottom: 0;">
+                    <label for="videoFile">Pilih File Video</label>
+                    <input type="file" id="videoFile" name="videoFile" required accept="video/mp4,video/x-matroska">
+                </div>
+                <button type="submit" class="btn btn-start" style="align-self: flex-end;">Unggah</button>
+            </form>
+        </section>
+
+        <div class="dashboard-container">
+            <% if (videos.length > 0) { %>
+                <% videos.forEach((video, index) => { %>
+                    <div class="stream-panel">
+                        <div class="panel-header">
+                            <h3><%= index + 1 %> - <%= video.title %></h3>
+                            <form action="/video/<%= video.id %>?_method=DELETE" method="POST" onsubmit="return confirm('Anda yakin ingin menghapus video ini?');">
+                                 <button type="submit" class="close-btn">&times;</button>
+                            </form>
+                        </div>
+                        <div class="video-preview">
+                            <video width="100%" controls muted poster="https://i.imgur.com/uVf9i1g.jpeg">
+                                <source src="/videos/<%= video.filename %>" type="video/mp4">
+                                Browser Anda tidak mendukung tag video.
+                            </video>
+                        </div>
+                        <div class="stream-settings">
+                            <div class="toggle-switch">
+                                <label>Loop Video</label>
+                                <label class="switch">
+                                    <input type="checkbox" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="input-group-icon">
+                                <input type="password" placeholder="rtmp://a.rtmp.youtube.com/live2/STREAM_KEY" class="rtmp-key">
+                                <span class="icon-eye">👁️</span>
+                            </div>
+                            <div class="stream-quality">
+                                <div class="quality-item"><label>Bitrate</label><input type="text" value="3000"></div>
+                                <div class="quality-item"><label>Resolusi</label><select><option>1080p</option><option>720p</option></select></div>
+                                <div class="quality-item"><label>FPS</label><select><option>30fps</option><option>60fps</option></select></div>
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn btn-start">Start</button>
+                                <button class="btn btn-delete">Hapus Video</button>
+                            </div>
+                        </div>
+                    </div>
+                <% }); %>
+            <% } else { %>
+                <div class="empty-state">
+                    <h3>Belum Ada Video</h3>
+                    <p>Silakan unggah video pertama Anda menggunakan form di atas.</p>
+                </div>
+            <% } %>
+        </div>
+    </main>
+</body>
+</html>
